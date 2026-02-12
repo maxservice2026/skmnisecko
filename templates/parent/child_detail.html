@@ -26,7 +26,7 @@
 </style>
 
 <div class="card">
-  <h2>Karta dítěte: {{ child.first_name }} {{ child.last_name }}</h2>
+  <h2>{{ child.first_name }} {{ child.last_name }}</h2>
   <p class="muted">Unikátní ID: {{ child.variable_symbol }} | VS: {{ child.variable_symbol }}</p>
 
   <h3>Členství</h3>
@@ -59,7 +59,7 @@
               {% if charge.paid %}
                 <span class="charge-paid">Uhrazeno</span>
               {% else %}
-                <span class="charge-open">Čeká na úhradu</span>
+                <span class="charge-open">Nezaplaceno</span>
               {% endif %}
             </td>
           </tr>
@@ -100,7 +100,7 @@
     <p class="muted">Docházka zatím není zadaná.</p>
   {% endif %}
 
-  <h3>Ekonomika ID</h3>
+  <h3 id="finance-history">Ekonomika ID</h3>
   {% if finance_entries %}
     <table class="charge-table">
       <thead>
@@ -126,7 +126,7 @@
             <td>{{ entry.amount_czk }} Kč</td>
             <td>
               {% if entry.direction == 'debit' and entry.status == 'open' %}
-                Čeká na úhradu
+                Nezaplaceno
               {% elif entry.status == 'closed' and entry.direction == 'debit' %}
                 Uhrazeno
               {% elif entry.status == 'cancelled' %}
@@ -157,7 +157,7 @@
     <p class="muted">Účet: <strong>290625104 / 0300</strong></p>
     <img
       alt="QR platba"
-      src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={{ 'SPD*1.0*ACC:CZ210300000000290625104*CC:CZK*AM:'|add:qr_amount|add:'*X-VS:'|add:child.variable_symbol|add:'*MSG:'|add:qr_message|urlencode }}"
+      src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={{ 'SPD*1.0*ACC:CZ9603000000000290625104*CC:CZK*AM:'|add:qr_amount|add:'*X-VS:'|add:child.variable_symbol|add:'*MSG:Platba'|urlencode }}"
       style="max-width:240px;border:1px solid #d9e0e8;border-radius:8px;padding:4px;background:#fff;"
     >
   {% else %}
@@ -173,17 +173,5 @@
     {% endfor %}
   </ul>
 
-  <h3>Upravit údaje dítěte</h3>
-  <form method="post">
-    {% csrf_token %}
-    {% for field in form %}
-      <div class="form-row">
-        <label>{{ field.label }}</label>
-        {{ field }}
-        {{ field.errors }}
-      </div>
-    {% endfor %}
-    <button class="btn" type="submit">Uložit</button>
-  </form>
 </div>
 {% endblock %}

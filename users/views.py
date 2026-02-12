@@ -305,29 +305,36 @@ def admin_dashboard(request):
 
     attendance_average_percent = int(round((total_present_records / total_expected_records) * 100)) if total_expected_records else 0
 
-    # Očekávané příspěvky a již uhrazené příspěvky (spárované VS + částka).
-    expected_total = Decimal('0.00')
-    paid_total = Decimal('0.00')
-    payment_counter = build_payment_counter(ReceivedPayment.objects.all().only('variable_symbol', 'amount_czk'))
-    for membership in memberships:
-        base_price = membership.attendance_option.price_czk if membership.attendance_option else Decimal('0.00')
-        selected_start = membership.billing_start_month
-        if not selected_start and membership.registered_at:
-            selected_start = month_start(membership.registered_at.date())
-        effective_start = normalize_start_month(
-            membership.group,
-            selected_start_month=selected_start,
-            fallback_date=date.today(),
+    # Očekávané příspěvky bereme z autorizovaných záloh/faktur.
+    # Otevřená záloha = čekáme na úhradu, uzavřená faktura = uhrazeno.
+    expected_total = (
+        ChildFinanceEntry.objects
+        .filter(
+            direction=ChildFinanceEntry.DIR_DEBIT,
         )
-        payable_months = payable_months_count(
-            membership.group,
-            selected_start_month=effective_start,
-            fallback_date=date.today(),
+        .filter(
+            Q(
+                event_type=ChildFinanceEntry.TYPE_PROFORMA,
+                status=ChildFinanceEntry.STATUS_OPEN,
+            ) |
+            Q(
+                event_type=ChildFinanceEntry.TYPE_INVOICE,
+                status=ChildFinanceEntry.STATUS_CLOSED,
+            )
         )
-        due_amount = prorated_amount(base_price, payable_months)
-        expected_total += due_amount
-        if consume_matching_payment(payment_counter, membership.child.variable_symbol, due_amount):
-            paid_total += due_amount
+        .aggregate(total=Sum('amount_czk'))['total']
+        or Decimal('0.00')
+    )
+    paid_total = (
+        ChildFinanceEntry.objects
+        .filter(
+            direction=ChildFinanceEntry.DIR_DEBIT,
+            event_type=ChildFinanceEntry.TYPE_INVOICE,
+            status=ChildFinanceEntry.STATUS_CLOSED,
+        )
+        .aggregate(total=Sum('amount_czk'))['total']
+        or Decimal('0.00')
+    )
 
     boys_count = 0
     girls_count = 0
@@ -908,7 +915,7 @@ def parent_dashboard(request):
                 row.display_title = row.title
 
             if row.direction == ChildFinanceEntry.DIR_DEBIT and row.status == ChildFinanceEntry.STATUS_OPEN:
-                row.parent_status_label = 'Čeká na úhradu'
+                row.parent_status_label = 'Nezaplaceno'
             elif row.status == ChildFinanceEntry.STATUS_CLOSED and row.direction == ChildFinanceEntry.DIR_DEBIT:
                 row.parent_status_label = 'Uhrazeno'
             elif row.status == ChildFinanceEntry.STATUS_CANCELLED:
@@ -920,10 +927,16 @@ def parent_dashboard(request):
                 and row.status == ChildFinanceEntry.STATUS_OPEN
                 and row.amount_czk > 0
             )
+        child.open_debit_rows = [
+            row for row in child.finance_rows
+            if row.direction == ChildFinanceEntry.DIR_DEBIT
+            and row.status == ChildFinanceEntry.STATUS_OPEN
+            and row.amount_czk > 0
+        ]
 
         child.attendance_preview = list(
             Attendance.objects
-            .filter(child=child, present=True)
+            .filter(child=child)
             .select_related('session__group', 'session__group__sport')
             .order_by('-session__date', '-id')[:3]
         )

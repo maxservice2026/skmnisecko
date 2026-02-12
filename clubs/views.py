@@ -1,6 +1,7 @@
 import csv
 from datetime import date, timedelta, datetime
 from decimal import Decimal, ROUND_HALF_UP
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth import login
@@ -578,6 +579,8 @@ def admin_group_detail(request, group_id):
             else:
                 membership.attendance_option = None
             membership.save(update_fields=['attendance_option'])
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                return JsonResponse({'ok': True, 'membership_id': membership.id})
             messages.success(request, 'Docházková varianta byla uložena.')
 
         elif action == 'bulk':
@@ -668,7 +671,7 @@ def admin_group_detail(request, group_id):
         redirect_url = reverse('admin_group_detail', kwargs={'group_id': group.id})
         final_query = query_from_post or query
         if final_query:
-            redirect_url += f'?q={final_query}'
+            redirect_url += f'?{urlencode({"q": final_query})}'
         return redirect(redirect_url)
 
     rows = []
@@ -1188,6 +1191,26 @@ def admin_children_export_xls(request):
 
 @role_required('admin')
 def admin_contributions(request):
+    current_q = (request.GET.get('q') or request.POST.get('q') or '').strip()
+    current_sort = (request.GET.get('sort') or request.POST.get('sort') or 'name').strip() or 'name'
+    current_dir = (request.GET.get('dir') or request.POST.get('dir') or 'asc').strip() or 'asc'
+    current_group = (request.GET.get('group') or request.POST.get('group') or '').strip()
+
+    def _redirect_current():
+        url = reverse('admin_contributions')
+        params = {}
+        if current_q:
+            params['q'] = current_q
+        if current_sort:
+            params['sort'] = current_sort
+        if current_dir:
+            params['dir'] = current_dir
+        if current_group:
+            params['group'] = current_group
+        if params:
+            url = f"{url}?{urlencode(params)}"
+        return redirect(url)
+
     if request.method == 'POST':
         action = (request.POST.get('action') or '').strip()
 
@@ -1201,7 +1224,7 @@ def admin_contributions(request):
             )
             if not memberships:
                 messages.warning(request, 'Nevybrali jste žádné děti pro autorizaci záloh.')
-                return redirect('admin_contributions')
+                return _redirect_current()
 
             open_membership_ids = set(
                 ChildFinanceEntry.objects
@@ -1233,13 +1256,13 @@ def admin_contributions(request):
                     f'bez částky: {skipped_count}.'
                 ),
             )
-            return redirect('admin_contributions')
+            return _redirect_current()
 
         if action == 'authorize_proforma_group':
             group_id = (request.POST.get('group_id') or '').strip()
             if not group_id.isdigit():
                 messages.warning(request, 'Vyberte skupinu pro autorizaci záloh.')
-                return redirect('admin_contributions')
+                return _redirect_current()
             group = get_object_or_404(Group.objects.select_related('sport'), id=group_id)
             memberships = list(
                 Membership.objects
@@ -1249,7 +1272,7 @@ def admin_contributions(request):
             )
             if not memberships:
                 messages.warning(request, f'Skupina {group} nemá žádné aktivní členství.')
-                return redirect('admin_contributions')
+                return _redirect_current()
 
             open_membership_ids = set(
                 ChildFinanceEntry.objects
@@ -1281,7 +1304,7 @@ def admin_contributions(request):
                     f'bez částky: {skipped_count}.'
                 ),
             )
-            return redirect('admin_contributions')
+            return _redirect_current()
 
         membership = None
         membership_id = request.POST.get('membership_id')
@@ -1304,7 +1327,9 @@ def admin_contributions(request):
                     membership.billing_start_month = date.fromisoformat(f"{month_raw}-01")
                 except ValueError:
                     messages.error(request, 'Neplatný měsíc zařazení.')
-                    return redirect('admin_contributions')
+                    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                        return JsonResponse({'ok': False, 'error': 'Neplatný měsíc zařazení.'}, status=400)
+                    return _redirect_current()
             else:
                 membership.billing_start_month = None
             membership.save(update_fields=['attendance_option', 'billing_start_month'])
@@ -1336,8 +1361,33 @@ def admin_contributions(request):
                     f"{membership.attendance_option.name if membership.attendance_option else '-'}."
                 ),
             )
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                base_price = membership.attendance_option.price_czk if membership.attendance_option else Decimal('0.00')
+                selected_start = membership.billing_start_month
+                if not selected_start and membership.registered_at:
+                    selected_start = month_start(membership.registered_at.date())
+                effective_start = normalize_start_month(
+                    membership.group,
+                    selected_start_month=selected_start,
+                    fallback_date=date.today(),
+                )
+                payable_months = payable_months_count(
+                    membership.group,
+                    selected_start_month=effective_start,
+                    fallback_date=date.today(),
+                )
+                due_amount = prorated_amount(base_price, payable_months)
+                return JsonResponse({
+                    'ok': True,
+                    'membership_id': membership.id,
+                    'base_price': str(base_price),
+                    'due_amount': str(due_amount),
+                    'payable_months': payable_months,
+                    'effective_start': effective_start.strftime('%Y-%m') if effective_start else '',
+                    'open_proforma_cancelled': cancelled > 0,
+                })
             messages.success(request, 'Varianta a zařazení byly uložené.')
-            return redirect('admin_contributions')
+            return _redirect_current()
 
         if action == 'generate_proforma' and membership:
             entry = _issue_membership_proforma(membership, created_by=request.user)
@@ -1345,11 +1395,12 @@ def admin_contributions(request):
                 messages.success(request, f'Vygenerována záloha {entry.reference_code}.')
             else:
                 messages.warning(request, 'Pro tuto položku není částka k úhradě.')
-            return redirect('admin_contributions')
+            return _redirect_current()
 
     sort = request.GET.get('sort', 'name')
     direction = request.GET.get('dir', 'asc')
     query = (request.GET.get('q') or '').strip()
+    group_filter = (request.GET.get('group') or '').strip()
     desc = direction == 'desc'
 
     rows = (
@@ -1365,6 +1416,10 @@ def admin_contributions(request):
             Q(child__last_name__icontains=query) |
             Q(child__variable_symbol__icontains=query)
         )
+    if group_filter.isdigit():
+        rows = rows.filter(group_id=int(group_filter))
+    else:
+        group_filter = ''
 
     sort_map = {
         'name': ['child__last_name', 'child__first_name'],
@@ -1428,6 +1483,7 @@ def admin_contributions(request):
         'sort': sort,
         'direction': direction,
         'query': query,
+        'group_filter': group_filter,
         'full_period_months': FULL_PERIOD_MONTHS,
         'total_due': total_due,
         'groups_nav': _groups_nav(),

@@ -297,7 +297,7 @@
                   {% if sale.paid %}
                     <span class="membership-status-active">Uhrazeno</span>
                   {% else %}
-                    <span style="color:#8b1e1e;font-weight:700;">Čeká</span>
+                    <span style="color:#8b1e1e;font-weight:700;">Nezaplaceno</span>
                   {% endif %}
                 </td>
               </tr>
@@ -350,7 +350,7 @@
             <td>{{ entry.get_event_type_display }}</td>
             <td>{{ entry.title }}{% if entry.note %}<div class="muted-small">{{ entry.note }}</div>{% endif %}</td>
             <td>{{ entry.amount_czk }} Kč</td>
-            <td>{{ entry.get_status_display }}</td>
+            <td>{% if entry.status == 'open' %}Nezaplaceno{% else %}{{ entry.get_status_display }}{% endif %}</td>
           </tr>
         {% empty %}
           <tr><td colspan="5" class="muted-small">Zatím bez finančních záznamů.</td></tr>

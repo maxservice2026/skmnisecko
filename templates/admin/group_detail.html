@@ -212,11 +212,35 @@
     const membershipInput = document.getElementById('variant-membership-id');
     const optionInput = document.getElementById('variant-option-id');
     if (!form || !membershipInput || !optionInput) return;
+    const pendingTimers = new Map();
+    function saveVariant(membershipId, optionId) {
+      membershipInput.value = membershipId;
+      optionInput.value = optionId;
+      const fd = new FormData(form);
+      fetch(window.location.pathname + window.location.search, {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: fd,
+      }).catch(() => {
+        // Fallback na standardní submit při chybě spojení.
+        form.submit();
+      });
+    }
+
     document.querySelectorAll('.attendance-option-select').forEach((select) => {
       select.addEventListener('change', () => {
-        membershipInput.value = select.dataset.membershipId;
-        optionInput.value = select.value;
-        form.submit();
+        const membershipId = select.dataset.membershipId;
+        if (!membershipId) return;
+        if (pendingTimers.has(membershipId)) {
+          window.clearTimeout(pendingTimers.get(membershipId));
+        }
+        const timer = window.setTimeout(() => {
+          saveVariant(membershipId, select.value);
+          pendingTimers.delete(membershipId);
+        }, 700);
+        pendingTimers.set(membershipId, timer);
       });
     });
   })();

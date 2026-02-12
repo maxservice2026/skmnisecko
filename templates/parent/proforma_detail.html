@@ -8,7 +8,7 @@
     Dítě: <strong>{{ entry.child.first_name }} {{ entry.child.last_name }}</strong><br>
     VS: <strong>{{ entry.variable_symbol }}</strong><br>
     Datum vystavení: <strong>{{ entry.occurred_on|date:"d.m.Y" }}</strong><br>
-    Stav: <strong>{{ entry.get_status_display }}</strong>
+    Stav: <strong>{% if entry.status == 'open' %}Nezaplaceno{% else %}{{ entry.get_status_display }}{% endif %}</strong>
   </p>
 
   {% if entry.membership %}
@@ -28,7 +28,7 @@
   {% if qr_amount > 0 %}
     <img
       alt="QR platba"
-      src="https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={{ 'SPD*1.0*ACC:CZ210300000000290625104*CC:CZK*AM:'|add:qr_amount|add:'*X-VS:'|add:entry.variable_symbol|urlencode }}"
+      src="https://api.qrserver.com/v1/create-qr-code/?size=260x260&data={{ 'SPD*1.0*ACC:CZ9603000000000290625104*CC:CZK*AM:'|add:qr_amount|add:'*X-VS:'|add:entry.variable_symbol|add:'*MSG:Platba'|urlencode }}"
       style="max-width:260px;border:1px solid #d9e0e8;border-radius:8px;padding:4px;background:#fff;"
     >
   {% else %}

@@ -43,14 +43,41 @@
   .membership-item {
     margin: 3px 0;
   }
+  .top-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 14px;
+  }
+  .attendance-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 14px;
+  }
+  .attendance-icon.present {
+    color: #fff;
+    background: #188b4a;
+  }
+  .attendance-icon.absent {
+    color: #fff;
+    background: #b72626;
+  }
 </style>
 
 <div class="card">
   <h2>Rodičovský přehled</h2>
-  <p>
-    <a class="btn" href="/parent/profile/">Upravit moje údaje</a>
+  <div class="top-actions">
+    <a class="btn" href="/parent/profile/">Upravit údaje rodiče a člena</a>
     <a class="btn secondary" href="/registrace/">Přidat další dítě</a>
-  </p>
+    {% if children %}
+      <a class="btn secondary" href="/parent/child/{{ children.0.id }}/#finance-history">Historie plateb</a>
+    {% endif %}
+  </div>
 
   <h3>Seznam členů</h3>
   {% if children %}
@@ -58,10 +85,11 @@
       {% for child in children %}
         <section class="child-block">
           <strong>{{ child.first_name }} {{ child.last_name }}</strong>
-          <div class="muted">VS: {{ child.variable_symbol }} | ID: {% if child.birth_number %}{{ child.birth_number }}{% else %}{{ child.passport_number }}{% endif %}</div>
+          <div class="muted">VS: {{ child.variable_symbol }}</div>
           <div style="margin-top:6px;">
+            <div class="membership-item"><strong>Skupiny:</strong></div>
             {% for membership in child.active_memberships %}
-              <div class="membership-item">Skupina: {{ membership.group }}{% if membership.attendance_option %}, varianta: {{ membership.attendance_option.name }}{% endif %}</div>
+              <div class="membership-item">{{ membership.group }}{% if membership.attendance_option %}, varianta: {{ membership.attendance_option.name }}{% endif %}</div>
             {% empty %}
               <div class="muted">Dítě zatím nemá aktivní skupinu.</div>
             {% endfor %}
@@ -70,8 +98,8 @@
             {% endfor %}
           </div>
 
-          <div style="margin-top:10px;"><strong>Ekonomika ID</strong></div>
-          {% if child.finance_rows %}
+          <div style="margin-top:10px;"><strong>Výzvy k úhradě</strong></div>
+          {% if child.open_debit_rows %}
             <table class="charge-table">
               <thead>
                 <tr>
@@ -79,29 +107,21 @@
                   <th>Událost</th>
                   <th>Částka</th>
                   <th>Stav</th>
-                  <th>QR</th>
                 </tr>
               </thead>
               <tbody>
-                {% for row in child.finance_rows %}
+                {% for row in child.open_debit_rows %}
                   <tr>
                     <td>{{ row.occurred_on|date:"d.m.Y" }}</td>
                     <td>{{ row.display_title }}</td>
                     <td>{{ row.amount_czk }} Kč</td>
-                    <td>{{ row.parent_status_label }}</td>
-                    <td>
-                      {% if row.can_qr %}
-                        <a class="btn secondary" style="padding:4px 10px;" href="/parent/child/{{ child.id }}/?qr_entry={{ row.id }}#qr-platba">QR</a>
-                      {% else %}
-                        <span class="muted">—</span>
-                      {% endif %}
-                    </td>
+                    <td>Nezaplaceno</td>
                   </tr>
                 {% endfor %}
               </tbody>
             </table>
           {% else %}
-            <div class="muted" style="margin-top:6px;">Bez ekonomických záznamů.</div>
+            <div class="muted" style="margin-top:6px;">Bez otevřených plateb.</div>
           {% endif %}
 
           <div style="margin-top:10px;"><strong>Poslední 3 přítomnosti na tréninku</strong></div>
@@ -111,6 +131,7 @@
                 <tr>
                   <th>Datum</th>
                   <th>Skupina</th>
+                  <th>Stav</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,6 +139,13 @@
                   <tr>
                     <td>{{ row.session.date|date:"d.m.Y" }}</td>
                     <td>{{ row.session.group.sport.name }} - {{ row.session.group.name }}</td>
+                    <td>
+                      {% if row.present %}
+                        <span class="attendance-icon present" title="Přítomen">✓</span>
+                      {% else %}
+                        <span class="attendance-icon absent" title="Nepřítomen">✕</span>
+                      {% endif %}
+                    </td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -126,12 +154,23 @@
             <div class="muted" style="margin-top:6px;">Zatím bez záznamu přítomnosti.</div>
           {% endif %}
 
+          <div id="qr-platba-{{ child.id }}" style="margin-top:10px;">
+            <strong>QR platba (součet všech otevřených plateb)</strong>
+            {% if child.due_total > 0 %}
+              <div class="muted" style="margin-top:4px;">Účet: <strong>290625104 / 0300</strong> | VS: <strong>{{ child.variable_symbol }}</strong> | Celkem: <strong>{{ child.due_total }} Kč</strong></div>
+              <img
+                alt="QR platba"
+                src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={{ 'SPD*1.0*ACC:CZ9603000000000290625104*CC:CZK*AM:'|add:child.due_total|add:'*X-VS:'|add:child.variable_symbol|add:'*MSG:Platba'|urlencode }}"
+                style="max-width:220px;border:1px solid #d9e0e8;border-radius:8px;padding:4px;background:#fff;margin-top:6px;"
+              >
+            {% else %}
+              <div class="muted" style="margin-top:6px;">Není evidována otevřená platba.</div>
+            {% endif %}
+          </div>
+
           <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
             <a class="btn secondary" href="/parent/child/{{ child.id }}#dochazka-dite">Další</a>
-            <a class="btn secondary" href="/parent/child/{{ child.id }}/">Karta dítěte</a>
-            {% if child.due_total > 0 %}
-              <a class="btn" href="/parent/child/{{ child.id }}/#qr-platba">QR celkem</a>
-            {% endif %}
+            <a class="btn secondary" href="/parent/child/{{ child.id }}/#finance-history">Historie plateb</a>
           </div>
         </section>
       {% endfor %}

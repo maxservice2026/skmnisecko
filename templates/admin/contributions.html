@@ -15,6 +15,10 @@
     <form method="post" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;padding:10px;border:1px solid #e8edf2;border-radius:10px;background:#fafcff;">
       {% csrf_token %}
       <input type="hidden" name="action" value="authorize_proforma_group">
+      <input type="hidden" name="q" value="{{ query }}">
+      <input type="hidden" name="sort" value="{{ sort }}">
+      <input type="hidden" name="dir" value="{{ direction }}">
+      <input type="hidden" name="group" value="{{ group_filter }}">
       <div style="min-width:220px;flex:1;">
         <label for="bulk-group-id">Autorizace záloh pro celou skupinu</label>
         <select id="bulk-group-id" name="group_id">
@@ -30,14 +34,25 @@
     <form id="bulk-selected-form" method="post" style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;padding:10px;border:1px solid #e8edf2;border-radius:10px;background:#fafcff;">
       {% csrf_token %}
       <input type="hidden" name="action" value="authorize_proforma_selected">
+      <input type="hidden" name="q" value="{{ query }}">
+      <input type="hidden" name="sort" value="{{ sort }}">
+      <input type="hidden" name="dir" value="{{ direction }}">
+      <input type="hidden" name="group" value="{{ group_filter }}">
       <div class="muted" style="min-width:220px;flex:1;">Autorizace záloh pro vybrané děti (zaškrtnuté řádky).</div>
       <button class="btn" id="bulk-selected-submit" type="submit" disabled>Autorizovat vybrané</button>
     </form>
   </div>
 
-  <form method="get" style="margin:10px 0 14px;max-width:420px;">
+  <form method="get" style="margin:10px 0 14px;max-width:760px;display:grid;grid-template-columns:1fr 280px;gap:8px;">
     <label for="contrib-search">Hledej</label>
+    <label for="contrib-group-filter">Skupina</label>
     <input id="contrib-search" type="text" name="q" value="{{ query }}" placeholder="Jméno nebo variabilní symbol">
+    <select id="contrib-group-filter" name="group">
+      <option value="">— všechny skupiny —</option>
+      {% for group in groups_nav %}
+        <option value="{{ group.id }}" {% if group_filter == group.id|stringformat:'s' %}selected{% endif %}>{{ group.sport.name }} - {{ group.name }}</option>
+      {% endfor %}
+    </select>
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="dir" value="{{ direction }}">
   </form>
@@ -49,13 +64,13 @@
           <th style="padding:8px;width:34px;">
             <input type="checkbox" id="bulk-select-all" title="Vybrat vše">
           </th>
-          <th style="padding:8px;"><a href="?sort=name&dir={% if sort == 'name' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query }}">Jméno</a></th>
-          <th style="padding:8px;"><a href="?sort=phone&dir={% if sort == 'phone' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query }}">Telefon</a></th>
-          <th style="padding:8px;"><a href="?sort=vs&dir={% if sort == 'vs' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query }}">VS</a></th>
-          <th style="padding:8px;"><a href="?sort=birth_number&dir={% if sort == 'birth_number' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query }}">Rodné číslo</a></th>
-          <th style="padding:8px;"><a href="?sort=group&dir={% if sort == 'group' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query }}">Skupina</a></th>
-          <th style="padding:8px;"><a href="?sort=option&dir={% if sort == 'option' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query }}">Varianta</a></th>
-          <th style="padding:8px;"><a href="?sort=amount&dir={% if sort == 'amount' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query }}">Plná cena (Kč)</a></th>
+          <th style="padding:8px;"><a href="?sort=name&dir={% if sort == 'name' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query|urlencode }}&group={{ group_filter|urlencode }}">Jméno</a></th>
+          <th style="padding:8px;"><a href="?sort=phone&dir={% if sort == 'phone' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query|urlencode }}&group={{ group_filter|urlencode }}">Telefon</a></th>
+          <th style="padding:8px;"><a href="?sort=vs&dir={% if sort == 'vs' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query|urlencode }}&group={{ group_filter|urlencode }}">VS</a></th>
+          <th style="padding:8px;"><a href="?sort=birth_number&dir={% if sort == 'birth_number' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query|urlencode }}&group={{ group_filter|urlencode }}">Rodné číslo</a></th>
+          <th style="padding:8px;"><a href="?sort=group&dir={% if sort == 'group' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query|urlencode }}&group={{ group_filter|urlencode }}">Skupina</a></th>
+          <th style="padding:8px;"><a href="?sort=option&dir={% if sort == 'option' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query|urlencode }}&group={{ group_filter|urlencode }}">Varianta</a></th>
+          <th style="padding:8px;"><a href="?sort=amount&dir={% if sort == 'amount' and direction == 'asc' %}desc{% else %}asc{% endif %}&q={{ query|urlencode }}&group={{ group_filter|urlencode }}">Plná cena (Kč)</a></th>
           <th style="padding:8px;">Zařazení od</th>
           <th style="padding:8px;">Účtováno měsíců</th>
           <th style="padding:8px;">K úhradě (Kč)</th>
@@ -147,17 +162,26 @@
     {% csrf_token %}
     <input type="hidden" name="action" value="update_membership">
     <input type="hidden" name="membership_id" value="{{ row.id }}">
+    <input type="hidden" name="q" value="{{ query }}">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    <input type="hidden" name="group" value="{{ group_filter }}">
   </form>
   <form id="membership-proforma-{{ row.id }}" method="post" style="display:none;">
     {% csrf_token %}
     <input type="hidden" name="action" value="generate_proforma">
     <input type="hidden" name="membership_id" value="{{ row.id }}">
+    <input type="hidden" name="q" value="{{ query }}">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    <input type="hidden" name="group" value="{{ group_filter }}">
   </form>
 {% endfor %}
 
 <script>
   (function () {
     const input = document.getElementById('contrib-search');
+    const groupSelect = document.getElementById('contrib-group-filter');
     const bulkButton = document.getElementById('bulk-selected-submit');
     const selectAll = document.getElementById('bulk-select-all');
     const checkItems = Array.from(document.querySelectorAll('.bulk-select-item'));
@@ -191,6 +215,11 @@
         input.form.submit();
       }, 350);
     });
+    if (groupSelect) {
+      groupSelect.addEventListener('change', function () {
+        groupSelect.form.submit();
+      });
+    }
 
     document.querySelectorAll('select[form^="membership-update-"]').forEach((el) => {
       el.addEventListener('change', function () {
