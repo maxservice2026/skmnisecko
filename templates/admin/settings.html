@@ -60,7 +60,10 @@
       {{ form.payment_forward_email }}
     </div>
 
-    <button class="btn" type="submit">Uložit nastavení</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn" type="submit" name="action" value="save">Uložit nastavení</button>
+      <button class="btn secondary" type="submit" name="action" value="test_email">Test e-mailového spojení</button>
+    </div>
   </form>
 </section>
 {% endblock %}

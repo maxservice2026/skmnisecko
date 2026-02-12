@@ -1,5 +1,8 @@
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
+import imaplib
+import smtplib
+import ssl
 
 from django.contrib import messages
 from django.contrib.auth import login, logout
@@ -26,6 +29,54 @@ DAY_TO_WEEKDAY = {
     'So': 5,
     'Ne': 6,
 }
+
+
+def _run_payment_email_connection_test(cleaned_data):
+    mode = cleaned_data.get('payment_email_mode')
+    if mode == 'forward':
+        email = (cleaned_data.get('payment_forward_email') or '').strip()
+        if not email:
+            return False, 'Pro režim přesměrování vyplňte cílový email.'
+        return True, f'Režim přesměrování je nastaven na {email}.'
+
+    imap_host = (cleaned_data.get('payment_imap_host') or '').strip()
+    imap_port = cleaned_data.get('payment_imap_port')
+    imap_user = (cleaned_data.get('payment_imap_user') or '').strip()
+    imap_password = cleaned_data.get('payment_imap_password') or ''
+    smtp_host = (cleaned_data.get('payment_smtp_host') or '').strip()
+    smtp_port = cleaned_data.get('payment_smtp_port')
+    smtp_user = (cleaned_data.get('payment_smtp_user') or '').strip()
+    smtp_password = cleaned_data.get('payment_smtp_password') or ''
+
+    if not all([imap_host, imap_port, imap_user, imap_password, smtp_host, smtp_port, smtp_user, smtp_password]):
+        return False, 'Pro test IMAP/SMTP vyplňte všechny údaje serveru, uživatele a hesla.'
+
+    details = []
+    try:
+        imap_client = imaplib.IMAP4_SSL(imap_host, int(imap_port), timeout=10)
+        imap_client.login(imap_user, imap_password)
+        imap_client.logout()
+        details.append('IMAP: OK')
+    except Exception as exc:
+        return False, f'IMAP test selhal: {exc}'
+
+    try:
+        if int(smtp_port) == 465:
+            smtp_client = smtplib.SMTP_SSL(smtp_host, int(smtp_port), timeout=10, context=ssl.create_default_context())
+            smtp_client.ehlo()
+        else:
+            smtp_client = smtplib.SMTP(smtp_host, int(smtp_port), timeout=10)
+            smtp_client.ehlo()
+            if int(smtp_port) in (25, 587):
+                smtp_client.starttls(context=ssl.create_default_context())
+                smtp_client.ehlo()
+        smtp_client.login(smtp_user, smtp_password)
+        smtp_client.quit()
+        details.append('SMTP: OK')
+    except Exception as exc:
+        return False, f'SMTP test selhal: {exc}'
+
+    return True, 'Spojení v pořádku. ' + ' | '.join(details)
 
 
 def _child_gender(child):
@@ -428,10 +479,19 @@ def admin_economics(request):
 def admin_settings(request):
     settings_obj = get_app_settings()
     form = AppSettingsForm(request.POST or None, instance=settings_obj)
-    if request.method == 'POST' and form.is_valid():
-        form.save()
-        messages.success(request, 'Nastavení aplikace bylo uloženo.')
-        return redirect('admin_settings')
+    if request.method == 'POST':
+        action = (request.POST.get('action') or 'save').strip()
+        if form.is_valid():
+            if action == 'test_email':
+                ok, msg = _run_payment_email_connection_test(form.cleaned_data)
+                if ok:
+                    messages.success(request, f'Test e-mailového spojení: {msg}')
+                else:
+                    messages.error(request, f'Test e-mailového spojení: {msg}')
+            else:
+                form.save()
+                messages.success(request, 'Nastavení aplikace bylo uloženo.')
+                return redirect('admin_settings')
     return render(request, 'admin/settings.html', {
         'form': form,
         'groups_nav': Group.objects.select_related('sport').order_by('sport__name', 'name'),
