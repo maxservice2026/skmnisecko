@@ -45,6 +45,7 @@ PAYMENT_ACCOUNT_DISPLAY = '290625104 / 0300'
 PAYMENT_ACCOUNT_IBAN = 'CZ9603000000000290625104'
 PAYMENT_ACCOUNT_BIC = 'CEKOCZPP'
 PAYMENT_ACCOUNT_RECIPIENT = 'SK SPB Z. S.'
+PAYMENT_QR_MESSAGE = 'Platby pro SK Mníšecko'
 
 
 class UserPasswordResetView(PasswordResetView):
@@ -415,6 +416,7 @@ def admin_dashboard(request):
         'contributions_expected': expected_total,
         'contributions_paid': paid_total,
         'groups_nav': Group.objects.select_related('sport').order_by('sport__name', 'name'),
+        'admin_hide_top_nav': True,
     })
 
 
@@ -1006,7 +1008,7 @@ def parent_dashboard(request):
             child.qr_payload = _build_spd_payload(
                 amount_czk=child.due_total,
                 variable_symbol=child.variable_symbol,
-                message='Souhrn clenske platby',
+                message=PAYMENT_QR_MESSAGE,
             )
             child.qr_image_data = _build_qr_data_uri(child.qr_payload)
         else:
@@ -1140,7 +1142,7 @@ def parent_child_detail(request, child_id):
     qr_payload = _build_spd_payload(
         amount_czk=qr_amount,
         variable_symbol=child.variable_symbol,
-        message=qr_message or 'Platba',
+        message=PAYMENT_QR_MESSAGE,
     ) if qr_amount > 0 else ''
     qr_image_data = _build_qr_data_uri(qr_payload) if qr_payload else None
 
@@ -1212,7 +1214,7 @@ def parent_proforma_detail(request, entry_id):
     qr_payload = _build_spd_payload(
         amount_czk=qr_amount,
         variable_symbol=entry.variable_symbol,
-        message='Clenstvi',
+        message=PAYMENT_QR_MESSAGE,
     ) if qr_amount > 0 else ''
     qr_image_data = _build_qr_data_uri(qr_payload) if qr_payload else None
     return render(request, 'parent/proforma_detail.html', {
