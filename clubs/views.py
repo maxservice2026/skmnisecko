@@ -1,7 +1,11 @@
 import csv
 import json
+import logging
+import smtplib
+import ssl
 from datetime import date, timedelta, datetime
 from decimal import Decimal, ROUND_HALF_UP
+from email.message import EmailMessage
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -44,6 +48,8 @@ from .payments import build_payment_counter, consume_matching_payment
 from attendance.models import Attendance
 from users.utils import get_app_settings
 
+logger = logging.getLogger(__name__)
+
 
 DAY_TO_WEEKDAY = {
     'Po': 0,
@@ -59,6 +65,51 @@ DAY_TO_WEEKDAY = {
 def _allowed_start_months(group):
     current_month = date.today().replace(day=1)
     return [m for m in group_month_starts(group) if m >= current_month]
+
+
+def _send_registration_confirmation_email(target_email):
+    if not target_email:
+        return False
+
+    settings_obj = get_app_settings()
+    subject = (settings_obj.registration_confirmation_subject or '').strip() or 'Potvrzujeme přijetí registrace'
+    body = (settings_obj.registration_confirmation_body or '').strip() or 'Dobrý den, děkujeme za zaslání registrace. Tým SK Mníšecko.'
+
+    smtp_host = (settings_obj.payment_smtp_host or '').strip()
+    smtp_port = int(settings_obj.payment_smtp_port or 0)
+    smtp_user = (settings_obj.payment_smtp_user or '').strip()
+    smtp_password = settings_obj.payment_smtp_password or ''
+    if not all([smtp_host, smtp_port, smtp_user, smtp_password]):
+        return False
+
+    message = EmailMessage()
+    message['Subject'] = subject
+    message['From'] = smtp_user
+    message['To'] = target_email
+    message.set_content(body)
+
+    try:
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(
+                smtp_host,
+                smtp_port,
+                timeout=10,
+                context=ssl.create_default_context(),
+            ) as client:
+                client.login(smtp_user, smtp_password)
+                client.send_message(message)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as client:
+                client.ehlo()
+                if smtp_port in (25, 587):
+                    client.starttls(context=ssl.create_default_context())
+                    client.ehlo()
+                client.login(smtp_user, smtp_password)
+                client.send_message(message)
+        return True
+    except Exception:
+        logger.exception('Nepodařilo se odeslat potvrzení registrace na %s', target_email)
+        return False
 
 
 def _next_reference(prefix):
@@ -190,6 +241,7 @@ def public_register(request):
     form = RegistrationForm(request.POST or None, parent_user=parent_user)
     if request.method == 'POST' and form.is_valid():
         parent, child, membership, created_parent, created_child, membership_created = form.save()
+        confirmation_sent = _send_registration_confirmation_email(parent.email)
 
         # Registrace z veřejného formuláře = okamžitá autorizace členské zálohy,
         # aby se částka hned zobrazila v rodičovském přehledu.
@@ -223,6 +275,8 @@ def public_register(request):
                 'Děkujeme za registraci. Shrnutí posíláme na email. '
                 'Uložte si přístupové údaje v prohlížeči pro další přihlášení.',
             )
+            if not confirmation_sent:
+                messages.warning(request, 'Potvrzovací e-mail se nyní nepodařilo odeslat. Zkontrolujte nastavení SMTP.')
         return redirect('parent_dashboard')
     return render(request, 'public/register.html', {'form': form})
 

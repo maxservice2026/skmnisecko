@@ -163,6 +163,15 @@ class AppSettings(models.Model):
     consent_vop_text = models.TextField(blank=True, verbose_name='VOP')
     consent_gdpr_text = models.TextField(blank=True, verbose_name='GDPR')
     consent_health_text = models.TextField(blank=True, verbose_name='Prohlášení o zdravotním stavu')
+    registration_confirmation_subject = models.CharField(
+        max_length=200,
+        default='Potvrzujeme přijetí registrace',
+        verbose_name='Potvrzení přijetí registrace - předmět',
+    )
+    registration_confirmation_body = models.TextField(
+        default='Dobrý den, děkujeme za zaslání registrace. Tým SK Mníšecko.',
+        verbose_name='Potvrzení přijetí registrace - text',
+    )
 
     payment_email_mode = models.CharField(
         max_length=20,
